@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Benchmarking SPECK64/128 - IoT</title>
+<style>
+  :root, .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --series-blue: #2a78d6;
+    --series-orange: #eb6834;
+    --series-aqua: #1baf7a;
+    --series-yellow: #eda100;
+    --series-violet: #4a3aa7;
+    --status-good: #0ca30c;
+    --status-critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --series-blue: #3987e5;
+      --series-orange: #d95926;
+      --series-aqua: #199e70;
+      --series-yellow: #c98500;
+      --series-violet: #9085e9;
+      --status-good: #0ca30c;
+      --status-critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-blue: #3987e5;
+    --series-orange: #d95926;
+    --series-aqua: #199e70;
+    --series-yellow: #c98500;
+    --series-violet: #9085e9;
+    --status-good: #0ca30c;
+    --status-critical: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin: 0; }
+  .badge-nonrealtime {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface-1); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  }
+  .badge-nonrealtime .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 16px 0 24px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--series-blue); color: white; border: none; border-radius: 8px;
+    padding: 8px 14px;
+  }
+  button.secondary {
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  }
+  #last-updated { font-size: 12px; color: var(--text-muted); }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 4px; color: var(--text-primary); }
+  .card .desc { font-size: 12px; color: var(--text-muted); margin: 0 0 16px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .tile .value { font-size: 28px; font-weight: 600; }
+  .tile .unit { font-size: 13px; color: var(--text-muted); margin-left: 4px; }
+
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; }
+
+  svg.chart { width: 100%; height: auto; overflow: visible; font-family: inherit; }
+  svg.chart text { fill: var(--text-secondary); font-size: 11px; }
+  svg.chart .axis-line { stroke: var(--baseline); stroke-width: 1; }
+  svg.chart .grid-line { stroke: var(--grid); stroke-width: 1; }
+  svg.chart .bar-label { fill: var(--text-primary); font-size: 11px; font-weight: 600; }
+  svg.chart .legend text { fill: var(--text-secondary); font-size: 11px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; }
+  td { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .table-scroll { overflow-x: auto; }
+
+  .empty-state { text-align: center; padding: 48px 16px; color: var(--text-secondary); }
+  .empty-state code {
+    background: var(--page); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px;
+    font-size: 12px;
+  }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.good { background: color-mix(in srgb, var(--status-good) 15%, transparent); color: var(--status-good); }
+  .pill.critical { background: color-mix(in srgb, var(--status-critical) 15%, transparent); color: var(--status-critical); }
+  .params-list { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12.5px; color: var(--text-secondary); }
+  .params-list b { color: var(--text-primary); }
+  footer { margin-top: 32px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dashboard Benchmarking SPECK64/128 pada Perangkat IoT</h1>
+      <p class="subtitle">ESP32-S3 + GY-BME280 (sintetis, sensor fisik belum terpasang) &middot; SPECK-CTR + HMAC-SHA256</p>
+    </div>
+    <span class="badge-nonrealtime"><span class="dot"></span>Non-real-time &mdash; data dimuat sekali, tidak auto-refresh</span>
+  </header>
+
+  <div class="toolbar">
+    <button id="btn-reload">Muat Ulang Data (summary.json)</button>
+    <button class="secondary" id="btn-theme">Ganti Tema</button>
+    <span id="last-updated"></span>
+  </div>
+
+  <div id="content"></div>
+
+  <footer>
+    Dashboard ini membaca <code>dashboard/summary.json</code> yang dihasilkan oleh <code>analyze.py</code>.
+    Sesuai desain penelitian, dashboard TIDAK melakukan polling otomatis &mdash; jalankan ulang
+    <code>python analyze.py</code> setelah sesi pengujian baru, lalu klik &ldquo;Muat Ulang Data&rdquo;.
+    Penggunaan CPU/RAM ditampilkan adalah proses <code>server.py</code> di komputer host, bukan pengukuran
+    langsung pada mikrokontroler ESP32-S3.
+  </footer>
+</div>
+
+<script>
+const THEME_KEY_NONE = null; // in-memory only per artifact browser-storage restriction guidance
+let currentTheme = null;
+
+function applyTheme(theme) {
+  currentTheme = theme;
+  if (theme) document.documentElement.setAttribute('data-theme', theme);
+  else document.documentElement.removeAttribute('data-theme');
+}
+document.getElementById('btn-theme').addEventListener('click', () => {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const effectiveDark = currentTheme ? currentTheme === 'dark' : prefersDark;
+  applyTheme(effectiveDark ? 'light' : 'dark');
+});
+
+const PALETTE = {
+  blue: 'var(--series-blue)', orange: 'var(--series-orange)', aqua: 'var(--series-aqua)',
+  yellow: 'var(--series-yellow)', violet: 'var(--series-violet)',
+};
+
+function fmtNum(v, digits) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '–';
+  return Number(v).toLocaleString('id-ID', {maximumFractionDigits: digits ?? 2, minimumFractionDigits: 0});
+}
+
+function el(tag, attrs, children) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  (children || []).forEach(c => e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+  return e;
+}
+
+// --- Simple bar chart renderer (inline SVG), mengikuti spec: bar tipis
+// dengan rounded data-end, gridline hairline recessive, legend untuk >=2
+// seri, label nilai selektif pada bar, hover tooltip via <title>. ---
+function barChart({ width = 400, height = 260, categories, series, unit = '', yFormatter, colorVar }) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const margin = { top: 16, right: 16, bottom: 36, left: 46 };
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+
+  const allVals = series.flatMap(s => s.values.map(v => v.mean ?? 0));
+  const maxVal = Math.max(1e-9, ...allVals) * 1.25;
+
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'chart');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const g = document.createElementNS(svgNS, 'g');
+  g.setAttribute('transform', `translate(${margin.left},${margin.top})`);
+  svg.appendChild(g);
+
+  // gridlines + y ticks (4 steps)
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const val = (maxVal / steps) * i;
+    const y = plotH - (val / maxVal) * plotH;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', 0); line.setAttribute('x2', plotW);
+    line.setAttribute('y1', y); line.setAttribute('y2', y);
+    line.setAttribute('class', i === 0 ? 'axis-line' : 'grid-line');
+    g.appendChild(line);
+    const t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('x', -8); t.setAttribute('y', y + 3); t.setAttribute('text-anchor', 'end');
+    t.textContent = yFormatter ? yFormatter(val) : fmtNum(val, 1);
+    g.appendChild(t);
+  }
+
+  const groupW = plotW / categories.length;
+  const barGap = 3;
+  const barW = Math.min(24, (groupW - barGap * (series.length + 1)) / series.length);
+  const totalBarsW = barW * series.length + barGap * (series.length - 1);
+
+  categories.forEach((cat, ci) => {
+    const groupX = ci * groupW + (groupW - totalBarsW) / 2;
+    series.forEach((s, si) => {
+      const point = s.values[ci];
+      const val = point ? (point.mean ?? 0) : 0;
+      const barH = (val / maxVal) * plotH;
+      const x = groupX + si * (barW + barGap);
+      const y = plotH - barH;
+      const rect = document.createElementNS(svgNS, 'path');
+      const r = Math.min(4, barH);
+      const d = barH > 0
+        ? `M${x},${plotH} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + barW - r},${y} Q${x + barW},${y} ${x + barW},${y + r} L${x + barW},${plotH} Z`
+        : `M${x},${plotH} L${x + barW},${plotH} Z`;
+      rect.setAttribute('d', d);
+      rect.setAttribute('fill', s.color);
+      const title = document.createElementNS(svgNS, 'title');
+      title.textContent = `${s.label} @ ${cat}: ${point ? fmtNum(point.mean, 3) : '–'} ${unit}` +
+        (point && point.ci_low != null ? ` (95% CI: ${fmtNum(point.ci_low,3)}–${fmtNum(point.ci_high,3)}, n=${point.n})` : '');
+      rect.appendChild(title);
+      g.appendChild(rect);
+
+      if (series.length === 1 && val > 0) {
+        const lbl = document.createElementNS(svgNS, 'text');
+        lbl.setAttribute('x', x + barW / 2);
+        lbl.setAttribute('y', y - 6);
+        lbl.setAttribute('text-anchor', 'middle');
+        lbl.setAttribute('class', 'bar-label');
+        lbl.textContent = fmtNum(val, val < 10 ? 2 : 0);
+        g.appendChild(lbl);
+      }
+    });
+    const catLabel = document.createElementNS(svgNS, 'text');
+    catLabel.setAttribute('x', ci * groupW + groupW / 2);
+    catLabel.setAttribute('y', plotH + 18);
+    catLabel.setAttribute('text-anchor', 'middle');
+    catLabel.textContent = cat;
+    g.appendChild(catLabel);
+  });
+
+  return svg;
+}
+
+function legendRow(series) {
+  const wrap = el('div', { style: 'display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;' });
+  series.forEach(s => {
+    const item = el('div', { style: 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);' });
+    const swatch = el('span', { style: `width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;` });
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(s.label));
+    wrap.appendChild(item);
+  });
+  return wrap;
+}
+
+function pick(rows, filter) {
+  return rows.filter(r => Object.keys(filter).every(k => r[k] === filter[k]));
+}
+
+function buildSeriesForMetric(rows, { scenario, side, metric, condition = 'normal', sizes }) {
+  const filtered = pick(rows, { scenario, side, metric, condition });
+  return sizes.map(sz => filtered.find(r => r.payload_size_bytes === sz) || null);
+}
+
+function renderCharts(container, data) {
+  const rows = data.summary || [];
+  const sizes = (data.experiment_params && data.experiment_params.payload_sizes_bytes) || [64, 256, 1024];
+  const sizeLabels = sizes.map(s => `${s} B`);
+
+  const grid = el('div', { class: 'charts-grid' });
+
+  // Chart: encrypt time vs payload size (S2)
+  const encVals = buildSeriesForMetric(rows, { scenario: 'S2', side: 'device', metric: 'encrypt_time_s', sizes });
+  if (encVals.some(v => v)) {
+    const card = el('div', { class: 'card' });
+    card.appendChild(el('h2', {}, ['Waktu Enkripsi vs Ukuran Payload (S2)']));
+    card.appendChild(el('p', { class: 'desc' }, ['SPECK64/128-CTR &middot; rata-rata per pengulangan, dalam milidetik']));
+    const series = [{ label: 'Waktu enkripsi (ms)', color: 'var(--series-blue)',
+      values: encVals.map(v => v ? { ...v, mean: v.mean * 1000, ci_low: v.ci_low != null ? v.ci_low*1000 : null, ci_high: v.ci_high != null ? v.ci_high*1000 : null } : null) }];
+    card.appendChild(barChart({ categories: sizeLabels, series, unit: 'ms' }));
+    grid.appendChild(card);
+  }
+
+  // Chart: throughput vs payload size (S2)
+  const thrVals = buildSeriesForMetric(rows, { scenario: 'S2', side: 'device', metric: 'throughput_bps', sizes });
+  if (thrVals.some(v => v)) {
+    const card = el('div', { class: 'card' });
+    card.appendChild(el('h2', {}, ['Throughput vs Ukuran Payload (S2)']));
+    card.appendChild(el('p', { class: 'desc' }, ['KiB per detik, dihitung dari ukuran ciphertext / waktu enkripsi']));
+    const series = [{ label: 'Throughput (KiB/s)', color: 'var(--series-orange)',
+      values: thrVals.map(v => v ? { ...v, mean: v.mean / 1024 } : null) }];
+    card.appendChild(barChart({ categories: sizeLabels, series, unit: 'KiB/s' }));
+    grid.appendChild(card);
+  }
+
+  // Chart: S4 accept rate normal vs tampered
+  const normalRow = pick(rows, { scenario: 'S4', side: 'server', metric: 'accepted_rate', condition: 'normal' })[0];
+  const tamperedRow = pick(rows, { scenario: 'S4', side: 'server', metric: 'accepted_rate', condition: 'tampered' })[0];
+  if (normalRow || tamperedRow) {
+    const card = el('div', { class: 'card' });
+    card.appendChild(el('h2', {}, ['S4: Verifikasi HMAC Tag — Normal vs Tampered']));
+    card.appendChild(el('p', { class: 'desc' }, ['Persentase pesan yang DITERIMA server; tampered seharusnya 0%']));
+    const catsC = ['Normal', 'Tampered'];
+    const valsC = [normalRow, tamperedRow].map(r => r ? { ...r, mean: r.mean * 100 } : null);
+    // Dua warna per-bar (status good/critical), bukan dua seri -- render lewat
+    // helper khusus, bukan barChart() umum yang mengasumsikan warna per seri.
+    const svgWrap = barChartMultiColor(catsC, valsC, ['var(--status-good)', 'var(--status-critical)'], '%');
+    card.appendChild(svgWrap);
+    grid.appendChild(card);
+  }
+
+  // Chart: resource usage (CPU / RAM) vs payload size
+  const cpuVals = buildSeriesForMetric(rows, { scenario: 'S2', side: 'server', metric: 'cpu_percent', sizes });
+  const ramVals = buildSeriesForMetric(rows, { scenario: 'S2', side: 'server', metric: 'ram_mb', sizes });
+  if (cpuVals.some(v => v) || ramVals.some(v => v)) {
+    const card = el('div', { class: 'card' });
+    card.appendChild(el('h2', {}, ['Penggunaan CPU & RAM Proses Server (host PC)']));
+    card.appendChild(el('p', { class: 'desc' }, ['Diukur dengan psutil pada proses server.py — BUKAN pengukuran langsung mikrokontroler']));
+    if (cpuVals.some(v => v)) {
+      card.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin:8px 0 4px;' }, ['CPU (%)']));
+      card.appendChild(barChart({ categories: sizeLabels, series: [{ label: 'CPU (%)', color: 'var(--series-aqua)', values: cpuVals }], height: 160 }));
+    }
+    if (ramVals.some(v => v)) {
+      card.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin:16px 0 4px;' }, ['RAM (MB)']));
+      card.appendChild(barChart({ categories: sizeLabels, series: [{ label: 'RAM (MB)', color: 'var(--series-violet)', values: ramVals }], height: 160 }));
+    }
+    grid.appendChild(card);
+  }
+
+  container.appendChild(grid);
+}
+
+function barChartMultiColor(categories, points, colors, unit) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const width = 400, height = 260;
+  const margin = { top: 16, right: 16, bottom: 36, left: 46 };
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+  const maxVal = Math.max(1, ...points.map(p => p ? p.mean : 0)) * 1.2;
+
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'chart');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  const g = document.createElementNS(svgNS, 'g');
+  g.setAttribute('transform', `translate(${margin.left},${margin.top})`);
+  svg.appendChild(g);
+
+  for (let i = 0; i <= 4; i++) {
+    const val = (maxVal / 4) * i;
+    const y = plotH - (val / maxVal) * plotH;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', 0); line.setAttribute('x2', plotW);
+    line.setAttribute('y1', y); line.setAttribute('y2', y);
+    line.setAttribute('class', i === 0 ? 'axis-line' : 'grid-line');
+    g.appendChild(line);
+    const t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('x', -8); t.setAttribute('y', y + 3); t.setAttribute('text-anchor', 'end');
+    t.textContent = fmtNum(val, 0);
+    g.appendChild(t);
+  }
+
+  const groupW = plotW / categories.length;
+  const barW = 40;
+  categories.forEach((cat, ci) => {
+    const point = points[ci];
+    const val = point ? point.mean : 0;
+    const barH = (val / maxVal) * plotH;
+    const x = ci * groupW + (groupW - barW) / 2;
+    const y = plotH - barH;
+    const r = Math.min(4, barH);
+    const d = barH > 0
+      ? `M${x},${plotH} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + barW - r},${y} Q${x + barW},${y} ${x + barW},${y + r} L${x + barW},${plotH} Z`
+      : `M${x},${plotH} L${x + barW},${plotH} Z`;
+    const rect = document.createElementNS(svgNS, 'path');
+    rect.setAttribute('d', d);
+    rect.setAttribute('fill', colors[ci]);
+    const title = document.createElementNS(svgNS, 'title');
+    title.textContent = `${cat}: ${fmtNum(val, 1)}${unit} (n=${point ? point.n : 0})`;
+    rect.appendChild(title);
+    g.appendChild(rect);
+
+    if (val > 0 || point) {
+      const lbl = document.createElementNS(svgNS, 'text');
+      lbl.setAttribute('x', x + barW / 2);
+      lbl.setAttribute('y', y - 6);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'bar-label');
+      lbl.textContent = fmtNum(val, 1) + unit;
+      g.appendChild(lbl);
+    }
+
+    const catLabel = document.createElementNS(svgNS, 'text');
+    catLabel.setAttribute('x', ci * groupW + groupW / 2);
+    catLabel.setAttribute('y', plotH + 18);
+    catLabel.setAttribute('text-anchor', 'middle');
+    catLabel.textContent = cat;
+    g.appendChild(catLabel);
+  });
+
+  return svg;
+}
+
+function renderTiles(container, data) {
+  const db = data.db || {};
+  const tampRow = pick(data.summary || [], { scenario: 'S4', side: 'server', metric: 'accepted_rate', condition: 'tampered' })[0];
+  const detectionRate = tampRow ? (1 - tampRow.mean) * 100 : null;
+
+  const tiles = el('div', { class: 'tiles' });
+  const tileDefs = [
+    { label: 'Pesan valid tersimpan (SQLite)', value: fmtNum(db.sensor_readings_count, 0) },
+    { label: 'Pesan ditolak (tag/format invalid)', value: fmtNum(db.rejected_count, 0) },
+    { label: 'Deteksi pesan tampered (S4)', value: detectionRate != null ? fmtNum(detectionRate, 1) + '%' : '–' },
+  ];
+  tileDefs.forEach(t => {
+    const tile = el('div', { class: 'tile' });
+    tile.appendChild(el('div', { class: 'label' }, [t.label]));
+    tile.appendChild(el('div', { class: 'value' }, [t.value]));
+    tiles.appendChild(tile);
+  });
+  container.appendChild(tiles);
+}
+
+function renderParams(container, data) {
+  const p = data.experiment_params || {};
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, ['Parameter Eksperimen']));
+  const list = el('div', { class: 'params-list' });
+  const rows = [
+    ['Varian SPECK', p.speck_variant], ['Mode', p.mode], ['Jumlah round', p.rounds],
+    ['Pengulangan/skenario', p.repeats_per_scenario], ['Warmup', p.warmup_requests],
+    ['Tier payload', (p.payload_sizes_bytes || []).join(', ') + ' byte'],
+  ];
+  rows.forEach(([k, v]) => {
+    const item = el('span', {}, []);
+    const b = el('b', {}, [String(v)]);
+    item.appendChild(document.createTextNode(k + ': '));
+    item.appendChild(b);
+    list.appendChild(item);
+  });
+  card.appendChild(list);
+  container.appendChild(card);
+}
+
+function renderStatsTable(container, data) {
+  const rows = data.summary || [];
+  if (!rows.length) return;
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, ['Tabel Statistik Lengkap (mean, std dev, 95% CI)']));
+  card.appendChild(el('p', { class: 'desc' }, ['Tabel ini melengkapi grafik di atas — seluruh baris data mentah tersedia di results/summary_stats.csv']));
+  const scroll = el('div', { class: 'table-scroll' });
+  const table = el('table');
+  const head = el('tr', {}, ['Skenario','Payload (B)','Sisi','Kondisi','Metrik','n','Mean','Std Dev','95% CI'].map(h => el('th', {}, [h])));
+  table.appendChild(el('thead', {}, [head]));
+  const tbody = el('tbody');
+  rows.forEach(r => {
+    const ciText = (r.ci_low != null && r.ci_high != null) ? `${fmtNum(r.ci_low,4)} – ${fmtNum(r.ci_high,4)}` : '–';
+    const tr = el('tr', {}, [
+      el('td', {}, [r.scenario]), el('td', {}, [String(r.payload_size_bytes)]), el('td', {}, [r.side]),
+      el('td', {}, [r.condition]), el('td', {}, [r.metric]), el('td', {}, [String(r.n)]),
+      el('td', {}, [fmtNum(r.mean, 4)]), el('td', {}, [r.std != null ? fmtNum(r.std, 4) : '–']),
+      el('td', {}, [ciText]),
+    ]);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  card.appendChild(scroll);
+  container.appendChild(card);
+}
+
+function renderLatestReadings(container, data) {
+  const readings = (data.db && data.db.latest_readings) || [];
+  if (!readings.length) return;
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('h2', {}, ['Pembacaan Sensor Terbaru (SQLite)']));
+  card.appendChild(el('p', { class: 'desc' }, ['20 pesan valid terakhir yang diterima & tersimpan server.py']));
+  const scroll = el('div', { class: 'table-scroll' });
+  const table = el('table');
+  const head = el('tr', {}, ['Device','Seq','Skenario','Suhu (°C)','Kelembapan (%)','Tekanan (hPa)','Sumber'].map(h => el('th', {}, [h])));
+  table.appendChild(el('thead', {}, [head]));
+  const tbody = el('tbody');
+  readings.forEach(r => {
+    const tr = el('tr', {}, [
+      el('td', {}, [r.device_id]), el('td', {}, [String(r.seq)]), el('td', {}, [r.scenario || '–']),
+      el('td', {}, [fmtNum(r.temp_c, 2)]), el('td', {}, [fmtNum(r.hum_pct, 2)]), el('td', {}, [fmtNum(r.pres_hpa, 2)]),
+      el('td', {}, [r.is_synthetic_sensor
+        ? el('span', { class: 'pill critical' }, ['Sintetis'])
+        : el('span', { class: 'pill good' }, ['BME280 asli'])]),
+    ]);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  card.appendChild(scroll);
+  container.appendChild(card);
+}
+
+function renderEmptyState(container) {
+  container.appendChild(el('div', { class: 'card empty-state' }, [
+    el('h2', {}, ['[DATA BENCHMARK BELUM TERSEDIA]']),
+    el('p', {}, [
+      'Belum ada hasil pengujian. Jalankan ',
+      el('code', {}, ['python server.py']),
+      ' lalu ',
+      el('code', {}, ['python device_sim.py --scenario all']),
+      ' (atau flash firmware ESP32-S3), kemudian ',
+      el('code', {}, ['python analyze.py']),
+      ' untuk menghasilkan dashboard/summary.json.',
+    ]),
+  ]));
+}
+
+async function loadData() {
+  const container = document.getElementById('content');
+  container.innerHTML = '';
+  try {
+    const res = await fetch('summary.json?_=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('summary.json tidak ditemukan (HTTP ' + res.status + ')');
+    const data = await res.json();
+    document.getElementById('last-updated').textContent = data.generated_at_unix
+      ? 'Data dihasilkan: ' + new Date(data.generated_at_unix * 1000).toLocaleString('id-ID')
+      : '';
+    if (!data.has_data) {
+      renderEmptyState(container);
+      return;
+    }
+    renderParams(container, data);
+    renderTiles(container, data);
+    renderCharts(container, data);
+    renderLatestReadings(container, data);
+    renderStatsTable(container, data);
+  } catch (err) {
+    container.innerHTML = '';
+    container.appendChild(el('div', { class: 'card empty-state' }, [
+      el('h2', {}, ['Gagal memuat dashboard/summary.json']),
+      el('p', {}, [String(err.message || err) + '. Pastikan dashboard dibuka lewat local web server (bukan file://), dan analyze.py sudah pernah dijalankan.']),
+    ]));
+  }
+}
+
+document.getElementById('btn-reload').addEventListener('click', loadData);
+loadData(); // load sekali saat halaman dibuka -- TIDAK ada polling/interval otomatis (non-real-time by design)
+</script>
+</body>
+</html>

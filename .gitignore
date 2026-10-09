@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Hasil pengujian (data mentah/hasil harus dibangkitkan lokal, bukan
+# dibawa dalam repository -- lihat README.md "Reproducibility")
+benchmark-speck/data/*.sqlite
+benchmark-speck/results/*.csv
+benchmark-speck/results/charts/*.png
+benchmark-speck/dashboard/summary.json
+
+# PlatformIO
+esp32-firmware/.pio/
+esp32-firmware/.vscode/
